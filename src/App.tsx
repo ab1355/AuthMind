@@ -35,6 +35,14 @@ import { AuditLedger } from './components/AuditLedger';
 // --- Mock Data ---
 const MASTER_WALLET = "0x7F5A...3B92";
 
+const AUTHORITY_MAPPING: Record<string, string> = {
+  L1: "20%",
+  L2: "40%",
+  L3: "60%",
+  L4: "80%",
+  L5: "100%"
+};
+
 const INITIAL_AGENTS = [
   {
     id: "ag_1",
@@ -44,10 +52,11 @@ const INITIAL_AGENTS = [
     wallet: "0x2A1C...9F44",
     allowance: "5,000 USDC",
     spent: "1,240 USDC",
+    authorityLevel: "L4",
     permissions: ["DeFi Swaps", "Vendor Payments"],
     lastActive: "2 mins ago",
     tasScore: 92,
-    tasMetrics: { baseScore: 80, successfulTasks: 10, failedTasks: 0, alignmentScore: 95, constitutionalViolations: 0, uptimeDays: 30 } as TASMetrics
+    tasMetrics: { sovereignty: 95, hardRule: 100, compliance: 90, recovery: 85, novelty: 80, audit: 95, trace: 90 } as TASMetrics
   },
   {
     id: "ag_2",
@@ -57,10 +66,11 @@ const INITIAL_AGENTS = [
     wallet: "0x9B3D...1E88",
     allowance: "0 ETH",
     spent: "0 ETH",
+    authorityLevel: "L2",
     permissions: ["Sign Data Payloads", "Read Encrypted State"],
     lastActive: "4 hours ago",
     tasScore: 65,
-    tasMetrics: { baseScore: 80, successfulTasks: 5, failedTasks: 2, alignmentScore: 70, constitutionalViolations: 0, uptimeDays: 15 } as TASMetrics
+    tasMetrics: { sovereignty: 60, hardRule: 80, compliance: 70, recovery: 50, novelty: 60, audit: 70, trace: 60 } as TASMetrics
   }
 ];
 
@@ -115,6 +125,7 @@ export default function App() {
     type: 'Operational',
     allowance: '0',
     currency: 'USDC',
+    authorityLevel: 'L1',
     permissions: [] as string[]
   });
 
@@ -131,15 +142,16 @@ export default function App() {
       wallet: generatedWallet,
       allowance: `${newAgent.allowance} ${newAgent.currency}`,
       spent: `0 ${newAgent.currency}`,
+      authorityLevel: newAgent.authorityLevel,
       permissions: newAgent.permissions.length > 0 ? newAgent.permissions : ["Basic Execution"],
       lastActive: "Just now",
       tasScore: 100,
-      tasMetrics: { baseScore: 100, successfulTasks: 0, failedTasks: 0, alignmentScore: 100, constitutionalViolations: 0, uptimeDays: 0 } as TASMetrics
+      tasMetrics: { sovereignty: 100, hardRule: 100, compliance: 100, recovery: 100, novelty: 100, audit: 100, trace: 100 } as TASMetrics
     };
 
     setAgents([agentToAdd, ...agents]);
     setIsProvisionModalOpen(false);
-    setNewAgent({ name: '', type: 'Operational', allowance: '0', currency: 'USDC', permissions: [] });
+    setNewAgent({ name: '', type: 'Operational', allowance: '0', currency: 'USDC', authorityLevel: 'L1', permissions: [] });
   };
 
   const runSimulation = async (e: React.FormEvent) => {
@@ -188,8 +200,8 @@ export default function App() {
     // Update TAS Score
     const updatedMetrics = {
       ...activeAgent.tasMetrics,
-      successfulTasks: activeAgent.tasMetrics.successfulTasks + 1,
-      alignmentScore: Math.min(100, activeAgent.tasMetrics.alignmentScore + 1)
+      audit: Math.min(100, activeAgent.tasMetrics.audit + 1),
+      compliance: Math.min(100, activeAgent.tasMetrics.compliance + 1)
     };
     const newTasScore = calculateTAS(updatedMetrics);
 
@@ -378,15 +390,21 @@ export default function App() {
                         </span>
                         <button 
                           onClick={() => setSelectedTasAgent(agent.id)}
-                          className="flex items-center gap-1.5 bg-zinc-950 hover:bg-zinc-800 px-2 py-1 rounded-md border border-zinc-800 transition-colors cursor-pointer"
+                          className={`flex items-center gap-1.5 bg-zinc-950 hover:bg-zinc-800 px-2 py-1 rounded-md border border-zinc-800 transition-colors cursor-pointer ${agent.tasScore > 85 ? 'text-emerald-400' : agent.tasScore >= 70 ? 'text-yellow-400' : 'text-red-400'}`}
                         >
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-xs font-mono text-zinc-300">TAS: {agent.tasScore}</span>
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span className="text-xs font-mono">TAS: {agent.tasScore}</span>
                         </button>
                       </div>
                     </div>
 
                     <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-zinc-400">Authority Level</span>
+                          <span className="font-mono text-zinc-200">{agent.authorityLevel} ({AUTHORITY_MAPPING[agent.authorityLevel]})</span>
+                        </div>
+                      </div>
                       <div>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-zinc-400">Cryptographic Allowance</span>
@@ -690,6 +708,20 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Authority Level */}
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Authority Level</label>
+                    <select 
+                      value={newAgent.authorityLevel}
+                      onChange={(e) => setNewAgent({...newAgent, authorityLevel: e.target.value})}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all appearance-none"
+                    >
+                      {Object.entries(AUTHORITY_MAPPING).map(([level, percentage]) => (
+                        <option key={level} value={level}>{level} ({percentage})</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Cryptographic Allowance */}
                   <div>
                     <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Cryptographic Allowance</label>
@@ -820,32 +852,36 @@ export default function App() {
                       <>
                         <div className="flex justify-between items-center p-3 bg-zinc-950 rounded-lg border border-zinc-800">
                           <span className="text-sm text-zinc-400">Overall TAS Score</span>
-                          <span className="text-xl font-bold text-emerald-400">{agent.tasScore}</span>
+                          <span className={`text-xl font-bold ${agent.tasScore > 85 ? 'text-emerald-400' : agent.tasScore >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>{agent.tasScore}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <span className="block text-xs text-zinc-500 mb-1">Base Score</span>
-                            <span className="text-lg font-mono text-zinc-200">{m.baseScore}</span>
+                            <span className="block text-xs text-zinc-500 mb-1">Sovereignty (20%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.sovereignty}</span>
                           </div>
                           <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <span className="block text-xs text-zinc-500 mb-1">Alignment Score</span>
-                            <span className="text-lg font-mono text-zinc-200">{m.alignmentScore}</span>
+                            <span className="block text-xs text-zinc-500 mb-1">HardRule (15%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.hardRule}</span>
                           </div>
                           <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <span className="block text-xs text-zinc-500 mb-1">Successful Tasks</span>
-                            <span className="text-lg font-mono text-green-400">{m.successfulTasks}</span>
+                            <span className="block text-xs text-zinc-500 mb-1">Compliance (5%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.compliance}</span>
                           </div>
                           <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <span className="block text-xs text-zinc-500 mb-1">Failed Tasks</span>
-                            <span className="text-lg font-mono text-red-400">{m.failedTasks}</span>
+                            <span className="block text-xs text-zinc-500 mb-1">Recovery (20%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.recovery}</span>
                           </div>
                           <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <span className="block text-xs text-zinc-500 mb-1">Violations</span>
-                            <span className="text-lg font-mono text-red-500">{m.constitutionalViolations}</span>
+                            <span className="block text-xs text-zinc-500 mb-1">Novelty (15%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.novelty}</span>
                           </div>
                           <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <span className="block text-xs text-zinc-500 mb-1">Uptime (Days)</span>
-                            <span className="text-lg font-mono text-zinc-200">{m.uptimeDays}</span>
+                            <span className="block text-xs text-zinc-500 mb-1">Audit (15%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.audit}</span>
+                          </div>
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 col-span-2">
+                            <span className="block text-xs text-zinc-500 mb-1">Trace (10%)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.trace}</span>
                           </div>
                         </div>
                       </>

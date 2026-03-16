@@ -2,12 +2,13 @@ export type AlignmentStatus = 'CERTIFIED_SUCCESS' | 'VIOLATED_REFUND' | 'AWAITIN
 export type IncidentSeverity = 'MINOR' | 'MODERATE' | 'SEVERE' | 'CRITICAL';
 
 export interface TASMetrics {
-  baseScore: number;
-  successfulTasks: number;
-  failedTasks: number;
-  alignmentScore: number; // 0-100
-  constitutionalViolations: number;
-  uptimeDays: number;
+  sovereignty: number;
+  hardRule: number;
+  compliance: number;
+  recovery: number;
+  novelty: number;
+  audit: number;
+  trace: number;
 }
 
 export interface AlignmentCheckParams {
