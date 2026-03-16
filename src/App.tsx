@@ -29,6 +29,8 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { auditLogger, performThreeWayCheck, calculateTAS, TASMetrics } from './lib/governance';
+import { useAuditLogger } from './agents/hooks/useAuditLogger';
+import { AuditLedger } from './components/AuditLedger';
 
 // --- Mock Data ---
 const MASTER_WALLET = "0x7F5A...3B92";
@@ -104,6 +106,8 @@ export default function App() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<{time: string, text: string, type: 'system' | 'auth0' | 'agent' | 'blockchain'}[]>([]);
   const [selectedAgent, setSelectedAgent] = useState(INITIAL_AGENTS[0].id);
+  const { logAction } = useAuditLogger(selectedAgent);
+  const [selectedTasAgent, setSelectedTasAgent] = useState<string | null>(null);
 
   // New Agent Form State
   const [newAgent, setNewAgent] = useState({
@@ -179,27 +183,9 @@ export default function App() {
       actions: ["github:read", "slack:write"]
     };
 
-    // 1. Generate SHA-256 Hash
-    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(resultPayload)));
-    const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const { entry, alignmentStatus: alignment } = await logAction("Terminal Execution", resultPayload);
 
-    // 2. Log to Audit Trail
-    const entry = await auditLogger.log({
-      agentId: activeAgent.id,
-      actionType: "Terminal Execution",
-      timestamp: Date.now(),
-      payload: resultPayload,
-      hash: hashHex
-    });
-
-    // 3. Run Alignment Check
-    const alignment = performThreeWayCheck({
-      functionalSuccess: resultPayload.success,
-      alignmentSuccess: true, // Assuming aligned for hackathon simulation
-      constitutionalSuccess: true // Assuming no safety violations
-    });
-
-    // 4. Update TAS Score
+    // Update TAS Score
     const updatedMetrics = {
       ...activeAgent.tasMetrics,
       successfulTasks: activeAgent.tasMetrics.successfulTasks + 1,
@@ -213,7 +199,7 @@ export default function App() {
         : a
     ));
 
-    // 5. Emit to Audit Ledger (via state)
+    // Emit to Audit Ledger (via state)
     setAuditLogs(prev => [{
       id: entry.id,
       agent: activeAgent.name,
@@ -221,7 +207,7 @@ export default function App() {
       target: "GitHub & Slack",
       amount: "-",
       time: new Date().toLocaleTimeString([], { hour12: false }),
-      txHash: "0x" + hashHex.substring(0, 8) + "..." + hashHex.substring(hashHex.length - 3),
+      txHash: "0x" + entry.hash.substring(0, 8) + "..." + entry.hash.substring(entry.hash.length - 3),
       alignment
     }, ...prev]);
 
@@ -390,10 +376,13 @@ export default function App() {
                         <span className={`text-xs px-2 py-1 rounded-full border ${agent.status === 'Active' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400'}`}>
                           {agent.status}
                         </span>
-                        <div className="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded-md border border-zinc-800">
+                        <button 
+                          onClick={() => setSelectedTasAgent(agent.id)}
+                          className="flex items-center gap-1.5 bg-zinc-950 hover:bg-zinc-800 px-2 py-1 rounded-md border border-zinc-800 transition-colors cursor-pointer"
+                        >
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                           <span className="text-xs font-mono text-zinc-300">TAS: {agent.tasScore}</span>
-                        </div>
+                        </button>
                       </div>
                     </div>
 
@@ -449,6 +438,10 @@ export default function App() {
                 <h2 className="text-3xl font-semibold tracking-tight mb-2">Immutable Audit Ledger</h2>
                 <p className="text-zinc-400">Cryptographically verifiable log of all agent episodic memories and actions.</p>
               </header>
+
+              <div className="mb-8">
+                <AuditLedger />
+              </div>
 
               <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl overflow-hidden">
                 <table className="w-full text-left text-sm">
@@ -777,6 +770,87 @@ export default function App() {
                     <Cpu className="w-4 h-4" />
                     Deploy Agent & Sign Transaction
                   </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* TAS Drill-down Modal */}
+        <AnimatePresence>
+          {selectedTasAgent && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }} 
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={() => setSelectedTasAgent(null)}
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+                animate={{ opacity: 1, scale: 1, y: 0 }} 
+                exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+                className="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              >
+                <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center border border-emerald-500/20">
+                      <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">Trust & Alignment Score</h3>
+                      <p className="text-xs text-zinc-400">Detailed metrics for {agents.find(a => a.id === selectedTasAgent)?.name}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedTasAgent(null)}
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors bg-zinc-800/50 hover:bg-zinc-800 p-2 rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  {(() => {
+                    const agent = agents.find(a => a.id === selectedTasAgent);
+                    if (!agent) return null;
+                    const m = agent.tasMetrics;
+                    return (
+                      <>
+                        <div className="flex justify-between items-center p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                          <span className="text-sm text-zinc-400">Overall TAS Score</span>
+                          <span className="text-xl font-bold text-emerald-400">{agent.tasScore}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                            <span className="block text-xs text-zinc-500 mb-1">Base Score</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.baseScore}</span>
+                          </div>
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                            <span className="block text-xs text-zinc-500 mb-1">Alignment Score</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.alignmentScore}</span>
+                          </div>
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                            <span className="block text-xs text-zinc-500 mb-1">Successful Tasks</span>
+                            <span className="text-lg font-mono text-green-400">{m.successfulTasks}</span>
+                          </div>
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                            <span className="block text-xs text-zinc-500 mb-1">Failed Tasks</span>
+                            <span className="text-lg font-mono text-red-400">{m.failedTasks}</span>
+                          </div>
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                            <span className="block text-xs text-zinc-500 mb-1">Violations</span>
+                            <span className="text-lg font-mono text-red-500">{m.constitutionalViolations}</span>
+                          </div>
+                          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                            <span className="block text-xs text-zinc-500 mb-1">Uptime (Days)</span>
+                            <span className="text-lg font-mono text-zinc-200">{m.uptimeDays}</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </motion.div>
             </div>
