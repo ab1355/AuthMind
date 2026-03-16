@@ -78,11 +78,26 @@ const AVAILABLE_PERMISSIONS = [
 ];
 
 export default function App() {
-  const { loginWithPopup, logout, user, isAuthenticated, isLoading } = useAuth0();
+  const { loginWithPopup, logout, user, isAuthenticated, isLoading, error: auth0Error } = useAuth0();
   const [activeTab, setActiveTab] = useState('delegation');
   const [agents, setAgents] = useState(INITIAL_AGENTS);
   const [auditLogs, setAuditLogs] = useState(INITIAL_AUDIT_LOGS);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const handleLogin = async () => {
+    try {
+      setLoginError(null);
+      await loginWithPopup();
+    } catch (err: any) {
+      console.error("Auth0 Login Error:", err);
+      if (err.message === "Popup closed") {
+        setLoginError("Login popup was closed before finishing.");
+      } else {
+        setLoginError(err.message || "Failed to open login popup. Please ensure popups are allowed for this site.");
+      }
+    }
+  };
   
   // Terminal State
   const [prompt, setPrompt] = useState('');
@@ -247,8 +262,13 @@ export default function App() {
           <p className="text-zinc-400 mb-8 text-sm">Authenticate via Auth0 to unlock your Master Wallet and Agent Matrix.</p>
           
           <div className="space-y-4">
+            {(loginError || auth0Error) && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg text-left">
+                {loginError || auth0Error?.message}
+              </div>
+            )}
             <button 
-              onClick={() => loginWithPopup()}
+              onClick={handleLogin}
               className="w-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-medium py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
             >
               <Fingerprint className="w-5 h-5" />
