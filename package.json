@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@371minds/governance-core": "file:governance-core",
     "@auth0/auth0-react": "^2.15.1",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
@@ -28,6 +29,7 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
+    "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

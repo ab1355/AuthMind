@@ -1,0 +1,30 @@
+{
+  "name": "@371minds/governance-core",
+  "version": "0.1.0",
+  "description": "Core governance utilities for 371 Minds autonomous agents",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "governance",
+    "agents",
+    "371minds"
+  ],
+  "author": "371 Minds",
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.2",
+    "typescript": "^5.0.0"
+  }
+}

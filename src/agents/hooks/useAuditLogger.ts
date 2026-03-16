@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
-import { auditLogger } from '../../lib/governance/auditLogger';
-import { performThreeWayCheck } from '../../lib/governance/alignmentCheck';
+import { auditLogger } from '@371minds/governance-core';
+import { performThreeWayCheck } from '@371minds/governance-core';
 import { storeAuditEntry } from '../../lib/governance/storage';
 
 export function useAuditLogger(agentId: string) {

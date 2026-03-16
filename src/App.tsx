@@ -28,7 +28,7 @@ import {
   ShieldAlert,
   ShieldCheck
 } from 'lucide-react';
-import { auditLogger, performThreeWayCheck, calculateTAS, TASMetrics } from './lib/governance';
+import { auditLogger, performThreeWayCheck, calculateTAS, TASMetrics } from '@371minds/governance-core';
 import { useAuditLogger } from './agents/hooks/useAuditLogger';
 import { AuditLedger } from './components/AuditLedger';
 
