@@ -24,8 +24,11 @@ import {
   Check,
   Terminal,
   Send,
-  Loader2
+  Loader2,
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
+import { auditLogger, performThreeWayCheck, calculateTAS, TASMetrics } from './lib/governance';
 
 // --- Mock Data ---
 const MASTER_WALLET = "0x7F5A...3B92";
@@ -40,7 +43,9 @@ const INITIAL_AGENTS = [
     allowance: "5,000 USDC",
     spent: "1,240 USDC",
     permissions: ["DeFi Swaps", "Vendor Payments"],
-    lastActive: "2 mins ago"
+    lastActive: "2 mins ago",
+    tasScore: 92,
+    tasMetrics: { baseScore: 80, successfulTasks: 10, failedTasks: 0, alignmentScore: 95, constitutionalViolations: 0, uptimeDays: 30 } as TASMetrics
   },
   {
     id: "ag_2",
@@ -51,14 +56,16 @@ const INITIAL_AGENTS = [
     allowance: "0 ETH",
     spent: "0 ETH",
     permissions: ["Sign Data Payloads", "Read Encrypted State"],
-    lastActive: "4 hours ago"
+    lastActive: "4 hours ago",
+    tasScore: 65,
+    tasMetrics: { baseScore: 80, successfulTasks: 5, failedTasks: 2, alignmentScore: 70, constitutionalViolations: 0, uptimeDays: 15 } as TASMetrics
   }
 ];
 
-const AUDIT_LOGS = [
-  { id: 1, agent: "Procurement Agent Alpha", action: "Executed Payment", target: "AWS Billing", amount: "450 USDC", time: "10:42 AM", txHash: "0x88f...12a" },
-  { id: 2, agent: "Master Wallet", action: "Delegated Authority", target: "Procurement Agent Alpha", amount: "5,000 USDC", time: "09:00 AM", txHash: "0x32c...99b" },
-  { id: 3, agent: "Data Sync Protocol", action: "Signed State Update", target: "CRM Node", amount: "-", time: "Yesterday", txHash: "0x11a...44c" },
+const INITIAL_AUDIT_LOGS = [
+  { id: "1", agent: "Procurement Agent Alpha", action: "Executed Payment", target: "AWS Billing", amount: "450 USDC", time: "10:42 AM", txHash: "0x88f...12a", alignment: "CERTIFIED_SUCCESS" },
+  { id: "2", agent: "Master Wallet", action: "Delegated Authority", target: "Procurement Agent Alpha", amount: "5,000 USDC", time: "09:00 AM", txHash: "0x32c...99b", alignment: "CERTIFIED_SUCCESS" },
+  { id: "3", agent: "Data Sync Protocol", action: "Signed State Update", target: "CRM Node", amount: "-", time: "Yesterday", txHash: "0x11a...44c", alignment: "AWAITING_VERIFICATION" },
 ];
 
 const AVAILABLE_PERMISSIONS = [
@@ -74,6 +81,7 @@ export default function App() {
   const { loginWithPopup, logout, user, isAuthenticated, isLoading } = useAuth0();
   const [activeTab, setActiveTab] = useState('delegation');
   const [agents, setAgents] = useState(INITIAL_AGENTS);
+  const [auditLogs, setAuditLogs] = useState(INITIAL_AUDIT_LOGS);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
   
   // Terminal State
@@ -105,7 +113,9 @@ export default function App() {
       allowance: `${newAgent.allowance} ${newAgent.currency}`,
       spent: `0 ${newAgent.currency}`,
       permissions: newAgent.permissions.length > 0 ? newAgent.permissions : ["Basic Execution"],
-      lastActive: "Just now"
+      lastActive: "Just now",
+      tasScore: 100,
+      tasMetrics: { baseScore: 100, successfulTasks: 0, failedTasks: 0, alignmentScore: 100, constitutionalViolations: 0, uptimeDays: 0 } as TASMetrics
     };
 
     setAgents([agentToAdd, ...agents]);
@@ -113,15 +123,18 @@ export default function App() {
     setNewAgent({ name: '', type: 'Operational', allowance: '0', currency: 'USDC', permissions: [] });
   };
 
-  const runSimulation = (e: React.FormEvent) => {
+  const runSimulation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt || isExecuting) return;
     
     setIsExecuting(true);
     setTerminalLogs([]);
     
+    const activeAgent = agents.find(a => a.id === selectedAgent);
+    if (!activeAgent) return;
+
     const steps = [
-      { t: 500, type: 'system', text: `Initiating execution sequence for agent: ${agents.find(a => a.id === selectedAgent)?.name}` },
+      { t: 500, type: 'system', text: `Initiating execution sequence for agent: ${activeAgent.name}` },
       { t: 1500, type: 'blockchain', text: 'Verifying cryptographic allowance and smart contract permissions...' },
       { t: 2500, type: 'auth0', text: 'Requesting Token Vault access for GitHub (scope: repo:read)...' },
       { t: 3500, type: 'auth0', text: 'Token retrieved successfully from Auth0 Vault. (JWT: eyJhbG...)' },
@@ -131,22 +144,80 @@ export default function App() {
       { t: 7000, type: 'auth0', text: 'Token retrieved successfully from Auth0 Vault.' },
       { t: 8000, type: 'agent', text: 'Calling Slack API: POST /chat.postMessage' },
       { t: 9000, type: 'blockchain', text: 'Signing transaction payload... TxHash: 0x' + Math.random().toString(16).slice(2, 10).toUpperCase() },
-      { t: 10000, type: 'system', text: 'Execution Complete. Audit log updated.' }
+      { t: 10000, type: 'system', text: 'Execution Complete. Governance checks initiated.' }
     ];
 
-    steps.forEach(({ t, type, text }) => {
-      setTimeout(() => {
-        setTerminalLogs(prev => [...prev, {
-          time: new Date().toLocaleTimeString([], { hour12: false }),
-          type: type as any,
-          text
-        }]);
-        if (t === 10000) {
-          setIsExecuting(false);
-          setPrompt('');
-        }
-      }, t);
+    for (const step of steps) {
+      await new Promise(resolve => setTimeout(resolve, step.t - (steps[steps.indexOf(step) - 1]?.t || 0)));
+      setTerminalLogs(prev => [...prev, {
+        time: new Date().toLocaleTimeString([], { hour12: false }),
+        type: step.type as any,
+        text: step.text
+      }]);
+    }
+
+    // --- GOVERNANCE INTEGRATION ---
+    const resultPayload = {
+      success: true,
+      prompt,
+      agentId: activeAgent.id,
+      actions: ["github:read", "slack:write"]
+    };
+
+    // 1. Generate SHA-256 Hash
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(resultPayload)));
+    const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // 2. Log to Audit Trail
+    const entry = await auditLogger.log({
+      agentId: activeAgent.id,
+      actionType: "Terminal Execution",
+      timestamp: Date.now(),
+      payload: resultPayload,
+      hash: hashHex
     });
+
+    // 3. Run Alignment Check
+    const alignment = performThreeWayCheck({
+      functionalSuccess: resultPayload.success,
+      alignmentSuccess: true, // Assuming aligned for hackathon simulation
+      constitutionalSuccess: true // Assuming no safety violations
+    });
+
+    // 4. Update TAS Score
+    const updatedMetrics = {
+      ...activeAgent.tasMetrics,
+      successfulTasks: activeAgent.tasMetrics.successfulTasks + 1,
+      alignmentScore: Math.min(100, activeAgent.tasMetrics.alignmentScore + 1)
+    };
+    const newTasScore = calculateTAS(updatedMetrics);
+
+    setAgents(prev => prev.map(a => 
+      a.id === activeAgent.id 
+        ? { ...a, tasScore: newTasScore, tasMetrics: updatedMetrics } 
+        : a
+    ));
+
+    // 5. Emit to Audit Ledger (via state)
+    setAuditLogs(prev => [{
+      id: entry.id,
+      agent: activeAgent.name,
+      action: "Terminal Execution",
+      target: "GitHub & Slack",
+      amount: "-",
+      time: new Date().toLocaleTimeString([], { hour12: false }),
+      txHash: "0x" + hashHex.substring(0, 8) + "..." + hashHex.substring(hashHex.length - 3),
+      alignment
+    }, ...prev]);
+
+    setTerminalLogs(prev => [...prev, {
+      time: new Date().toLocaleTimeString([], { hour12: false }),
+      type: 'system',
+      text: `Governance Check: ${alignment}. TAS Score updated to ${newTasScore}.`
+    }]);
+
+    setIsExecuting(false);
+    setPrompt('');
   };
 
   if (isLoading) {
@@ -295,9 +366,15 @@ export default function App() {
                           <span className="text-xs font-mono text-zinc-500">{agent.wallet}</span>
                         </div>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-full border ${agent.status === 'Active' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400'}`}>
-                        {agent.status}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-full border ${agent.status === 'Active' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-zinc-800 border-zinc-700 text-zinc-400'}`}>
+                          {agent.status}
+                        </span>
+                        <div className="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded-md border border-zinc-800">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-xs font-mono text-zinc-300">TAS: {agent.tasScore}</span>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="space-y-4">
@@ -361,11 +438,12 @@ export default function App() {
                       <th className="px-6 py-4 font-medium">Actor</th>
                       <th className="px-6 py-4 font-medium">Action</th>
                       <th className="px-6 py-4 font-medium">Target / Amount</th>
+                      <th className="px-6 py-4 font-medium">Alignment</th>
                       <th className="px-6 py-4 font-medium">Tx Hash</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/50">
-                    {AUDIT_LOGS.map((log) => (
+                    {auditLogs.map((log) => (
                       <tr key={log.id} className="hover:bg-zinc-800/20 transition-colors">
                         <td className="px-6 py-4 text-zinc-500 whitespace-nowrap">{log.time}</td>
                         <td className="px-6 py-4 font-medium flex items-center gap-2">
@@ -378,6 +456,23 @@ export default function App() {
                             <span>{log.target}</span>
                             <span className="text-xs text-zinc-500 font-mono">{log.amount}</span>
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {log.alignment === 'CERTIFIED_SUCCESS' && (
+                            <span className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-md border border-emerald-400/20 w-fit">
+                              <ShieldCheck className="w-3.5 h-3.5" /> Certified
+                            </span>
+                          )}
+                          {log.alignment === 'AWAITING_VERIFICATION' && (
+                            <span className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded-md border border-yellow-400/20 w-fit">
+                              <ShieldAlert className="w-3.5 h-3.5" /> Pending
+                            </span>
+                          )}
+                          {log.alignment === 'VIOLATED_REFUND' && (
+                            <span className="flex items-center gap-1.5 text-xs text-red-400 bg-red-400/10 px-2 py-1 rounded-md border border-red-400/20 w-fit">
+                              <ShieldAlert className="w-3.5 h-3.5" /> Violated
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className="font-mono text-xs text-cyan-400 bg-cyan-400/10 px-2 py-1 rounded border border-cyan-400/20">
