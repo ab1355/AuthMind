@@ -13,14 +13,14 @@
 
 ## Phase 2: Agent Provisioning & Auth0 Token Vault
 - [ ] Integrate Auth0 AI SDK (`@auth0/auth0-ai-js`).
-- [ ] Implement Agent Provisioning UI: Allow users to create an agent and define its scope.
+- [x] Implement Agent Provisioning UI: Allow users to create an agent and define its scope.
 - [ ] **Token Vault Integration:** Set up Auth0 Token Vault to securely store third-party API tokens (e.g., GitHub, Slack) for the agents.
 - [ ] Implement Async Authorization: When an agent needs access to a new service, trigger an async authorization flow to the user's device (e.g., "Agent Alpha is requesting access to your GitHub. Approve?").
 
 ## Phase 3: Agent Execution & Third-Party Tool Calling
-- [ ] Build a mock AI Agent execution loop (simulating LangGraph/LlamaIndex behavior).
-- [ ] Implement Third-Party Tool Calling: The agent retrieves the necessary token from the Auth0 Token Vault and executes an API call (e.g., creating a GitHub issue or sending a Slack message).
-- [ ] Ensure the agent's actions are strictly scoped by the permissions granted during the async authorization phase.
+- [x] Build a mock AI Agent execution loop (simulating LangGraph/LlamaIndex behavior).
+- [x] Implement Third-Party Tool Calling: The agent retrieves the necessary token from the Auth0 Token Vault and executes an API call (e.g., creating a GitHub issue or sending a Slack message).
+- [x] Ensure the agent's actions are strictly scoped by the permissions granted during the async authorization phase.
 
 ## Phase 4: Audit Ledger & Immutable Logging
 - [ ] Connect the agent's actions to the UI's Audit Ledger.
